@@ -2,6 +2,8 @@
 *.DotSettings.user
 .DS_Store
 ._.DS_Store
+.vs
+packages
 /_ReSharper.*
 bin
 obj
