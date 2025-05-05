@@ -16,11 +16,12 @@ namespace NamedPipeWrapper
     public class NamedPipeClient<TReadWrite> : NamedPipeClient<TReadWrite, TReadWrite> where TReadWrite : class
     {
         /// <summary>
-        /// Constructs a new <c>NamedPipeClient</c> to connect to the <see cref="NamedPipeNamedPipeServer{TReadWrite}"/> specified by <paramref name="pipeName"/>.
+        /// Constructs a new <c>NamedPipeClient</c> to connect to the <see cref="NamedPipeServer{TReadWrite}"/> specified by <paramref name="pipeName"/>.
         /// </summary>
         /// <param name="pipeName">Name of the server's pipe</param>
         /// <param name="serverName">server name default is local.</param>
-        public NamedPipeClient(string pipeName,string serverName=".") : base(pipeName, serverName)
+        /// <param name="bNeedNegotiatePipename"></param>
+        public NamedPipeClient(string pipeName,string serverName=".", bool bNeedNegotiatePipename = false) : base(pipeName, serverName, bNeedNegotiatePipename)
         {
         }
     }
@@ -57,6 +58,7 @@ namespace NamedPipeWrapper
         public event PipeExceptionEventHandler Error;
 
         private readonly string _pipeName;
+        private readonly bool _bNeedNegotiatePipename;
         private NamedPipeConnection<TRead, TWrite> _connection;
 
         private readonly AutoResetEvent _connected = new AutoResetEvent(false);
@@ -69,14 +71,16 @@ namespace NamedPipeWrapper
         private string _serverName { get; set; }
 
         /// <summary>
-        /// Constructs a new <c>NamedPipeClient</c> to connect to the <see cref="NamedPipeServer{TRead, TWrite}"/> specified by <paramref name="pipeName"/>.
+        /// Constructs a new <c>NamedPipeClient</c> to connect to the <see cref="NamedPipeClient{TRead, TWrite}"/> specified by <paramref name="pipeName"/>.
         /// </summary>
         /// <param name="pipeName">Name of the server's pipe</param>
         /// <param name="serverName">the Name of the server, default is  local machine</param>
-        public NamedPipeClient(string pipeName,string serverName)
+        /// <param name="bNeedNegotiatePipename"></param>
+        public NamedPipeClient(string pipeName,string serverName = ".",bool bNeedNegotiatePipename = false)
         {
             _pipeName = pipeName;
             _serverName = serverName;
+            _bNeedNegotiatePipename = bNeedNegotiatePipename;
             AutoReconnect = true;
         }
 
@@ -112,8 +116,8 @@ namespace NamedPipeWrapper
                 _connection.Close();
         }
 
+        #pragma warning disable CS1591
         #region Wait for connection/disconnection
-
         public void WaitForConnection()
         {
             _connected.WaitOne();
@@ -145,18 +149,25 @@ namespace NamedPipeWrapper
         }
 
         #endregion
-
+        #pragma warning restore CS1591
         #region Private methods
 
         private void ListenSync()
         {
+            NamedPipeClientStream dataPipe = null;
             // Get the name of the data pipe that should be used from now on by this NamedPipeClient
-            var handshake = PipeClientFactory.Connect<string, string>(_pipeName,_serverName);
-            var dataPipeName = handshake.ReadObject();
-            handshake.Close();
-
-            // Connect to the actual data pipe
-            var dataPipe = PipeClientFactory.CreateAndConnectPipe(dataPipeName,_serverName);
+            if (_bNeedNegotiatePipename)
+            {
+                var handshake = PipeClientFactory.Connect<string, string>(_pipeName, _serverName);
+                var dataPipeName = handshake.ReadObject();
+                handshake.Close();
+                // Connect to the actual data pipe
+                dataPipe = PipeClientFactory.CreateAndConnectPipe(dataPipeName, _serverName);
+            } 
+            else
+            { 
+                dataPipe = PipeClientFactory.CreateAndConnectPipe(_pipeName, _serverName);
+            }
 
             // Create a Connection object for the data pipe
             _connection = ConnectionFactory.CreateConnection<TRead, TWrite>(dataPipe);

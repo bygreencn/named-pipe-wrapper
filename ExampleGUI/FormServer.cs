@@ -12,7 +12,7 @@ namespace ExampleGUI
 {
     public partial class FormServer : Form
     {
-        private readonly NamedPipeServer<string> _server = new NamedPipeServer<string>(Constants.PIPE_NAME);
+        private readonly NamedPipeServer<string> _server = new NamedPipeServer<string>(Constants.PIPE_NAME,1);
         private readonly ISet<string> _clients = new HashSet<string>();
 
         public FormServer()
@@ -70,9 +70,21 @@ namespace ExampleGUI
         {
             if (string.IsNullOrWhiteSpace(textBoxMessage.Text))
                 return;
-
-            _server.PushMessage(textBoxMessage.Text);
+            if (listBoxClients.SelectedItem == null)
+            {
+                _server.PushMessage(textBoxMessage.Text);
+            }
+            else
+            {
+                var clientName = listBoxClients.SelectedItem.ToString();
+                _server.PushMessage(textBoxMessage.Text, clientName);
+            }
             textBoxMessage.Text = "";
+        }
+
+        private void buttonClear_Click(object sender, EventArgs e)
+        {
+            listBoxClients.ClearSelected();
         }
     }
 }

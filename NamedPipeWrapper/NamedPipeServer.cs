@@ -16,8 +16,11 @@ namespace NamedPipeWrapper
         /// Constructs a new <c>NamedPipeServer</c> object that listens for client connections on the given <paramref name="pipeName"/>.
         /// </summary>
         /// <param name="pipeName">Name of the pipe to listen on</param>
-        public NamedPipeServer(string pipeName)
-            : base(pipeName, null)
+        /// <param name="maxNumberOfServerInstances"></param>
+        /// <param name="inBufferSize"></param>
+        /// <param name="outBufferSize"></param>
+        public NamedPipeServer(string pipeName, int maxNumberOfServerInstances = 64, int inBufferSize = 4096, int outBufferSize = 4096)
+            : base(pipeName, null,maxNumberOfServerInstances, inBufferSize, outBufferSize)
         {
         }
 
@@ -25,8 +28,12 @@ namespace NamedPipeWrapper
         /// Constructs a new <c>NamedPipeServer</c> object that listens for client connections on the given <paramref name="pipeName"/>.
         /// </summary>
         /// <param name="pipeName">Name of the pipe to listen on</param>
-        public NamedPipeServer(string pipeName, PipeSecurity pipeSecurity)
-            : base(pipeName, pipeSecurity)
+        /// <param name="pipeSecurity"></param>
+        /// <param name="maxNumberOfServerInstances"></param>
+        /// <param name="inBufferSize"></param>
+        /// <param name="outBufferSize"></param>
+        public NamedPipeServer(string pipeName, PipeSecurity pipeSecurity, int maxNumberOfServerInstances = 64, int inBufferSize = 4096, int outBufferSize = 4096)
+            : base(pipeName, pipeSecurity, maxNumberOfServerInstances, inBufferSize, outBufferSize)
         {
         }
     }
@@ -62,6 +69,9 @@ namespace NamedPipeWrapper
 
         private readonly string _pipeName;
         private readonly PipeSecurity _pipeSecurity;
+        private readonly int _maxNumberOfServerInstances;
+        private readonly int _inBufferSize;
+        private readonly int _outBufferSize;
         private readonly List<NamedPipeConnection<TRead, TWrite>> _connections = new List<NamedPipeConnection<TRead, TWrite>>();
 
         private int _nextPipeId;
@@ -73,10 +83,17 @@ namespace NamedPipeWrapper
         /// Constructs a new <c>NamedPipeServer</c> object that listens for client connections on the given <paramref name="pipeName"/>.
         /// </summary>
         /// <param name="pipeName">Name of the pipe to listen on</param>
-        public Server(string pipeName, PipeSecurity pipeSecurity)
+        /// <param name="pipeSecurity"></param>
+        /// <param name="maxNumberOfServerInstances"></param>
+        /// <param name="inBufferSize"></param>
+        /// <param name="outBufferSize"></param>
+        public Server(string pipeName, PipeSecurity pipeSecurity, int maxNumberOfServerInstances = 10, int inBufferSize = 1024, int outBufferSize = 1024)
         {
             _pipeName = pipeName;
             _pipeSecurity = pipeSecurity;
+            _maxNumberOfServerInstances = maxNumberOfServerInstances;
+            _inBufferSize = inBufferSize;
+            _outBufferSize = outBufferSize;
         }
 
         /// <summary>
@@ -167,19 +184,35 @@ namespace NamedPipeWrapper
             NamedPipeServerStream dataPipe = null;
             NamedPipeConnection<TRead, TWrite> connection = null;
 
-            var connectionPipeName = GetNextConnectionPipeName(pipeName);
-
             try
             {
                 // Send the client the name of the data pipe to use
-                handshakePipe = PipeServerFactory.CreateAndConnectPipe(pipeName, pipeSecurity);
-                var handshakeWrapper = new PipeStreamWrapper<string, string>(handshakePipe);
-                handshakeWrapper.WriteObject(connectionPipeName);
-                handshakeWrapper.WaitForPipeDrain();
-                handshakeWrapper.Close();
+                if (1 == _maxNumberOfServerInstances)
+                {
+                    var connectionPipeName = GetNextConnectionPipeName(pipeName);
+                    handshakePipe = PipeServerFactory.CreateAndConnectPipe(pipeName, pipeSecurity, 1, 0, 0);
+                    var handshakeWrapper = new PipeStreamWrapper<string, string>(handshakePipe);
+                    handshakeWrapper.WriteObject(connectionPipeName);
+                    handshakeWrapper.WaitForPipeDrain();
+                    handshakeWrapper.Close();
 
-                // Wait for the client to connect to the data pipe
-                dataPipe = PipeServerFactory.CreatePipe(connectionPipeName, pipeSecurity);
+                    // Wait for the client to connect to the data pipe
+                    dataPipe = PipeServerFactory.CreatePipe(
+                        connectionPipeName, 
+                        pipeSecurity, 
+                        _maxNumberOfServerInstances, 
+                        _inBufferSize, 
+                        _outBufferSize);
+                }
+                else
+                {
+                    dataPipe = PipeServerFactory.CreatePipe(
+                        pipeName, 
+                        pipeSecurity, 
+                        _maxNumberOfServerInstances, 
+                        _inBufferSize, 
+                        _outBufferSize);
+                }
                 dataPipe.WaitForConnection();
 
                 // Add the client's connection to the list of connections
@@ -271,16 +304,16 @@ namespace NamedPipeWrapper
 
     static class PipeServerFactory
     {
-        public static NamedPipeServerStream CreateAndConnectPipe(string pipeName, PipeSecurity pipeSecurity)
+        public static NamedPipeServerStream CreateAndConnectPipe(string pipeName, PipeSecurity pipeSecurity, int maxNumberOfServerInstances = 10, int inBufferSize = 1024, int outBufferSize = 1024)
         {
-            var pipe = CreatePipe(pipeName, pipeSecurity);
+            var pipe = CreatePipe(pipeName, pipeSecurity, maxNumberOfServerInstances, inBufferSize, outBufferSize);
             pipe.WaitForConnection();
             return pipe;
         }
 
-        public static NamedPipeServerStream CreatePipe(string pipeName, PipeSecurity pipeSecurity)
+        public static NamedPipeServerStream CreatePipe(string pipeName, PipeSecurity pipeSecurity, int maxNumberOfServerInstances = 10, int inBufferSize = 1024, int outBufferSize = 1024)
         {
-            return new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.WriteThrough, 0, 0, pipeSecurity);
+            return new NamedPipeServerStream(pipeName, PipeDirection.InOut, maxNumberOfServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.WriteThrough, inBufferSize, outBufferSize, pipeSecurity);
         }
     }
 }

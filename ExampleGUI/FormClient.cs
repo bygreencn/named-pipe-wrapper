@@ -12,7 +12,7 @@ namespace ExampleGUI
 {
     public partial class FormClient : Form
     {
-        private readonly NamedPipeClient<string> _client = new NamedPipeClient<string>(Constants.PIPE_NAME);
+        private readonly NamedPipeClient<string> _client = new NamedPipeClient<string>(Constants.PIPE_NAME,".", true);
 
         public FormClient()
         {
